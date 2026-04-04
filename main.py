@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 
 import random
 import asyncio
-import yaml
 import pymysql.cursors
 
 from vkbottle.bot import Bot, Message, rules
