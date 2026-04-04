@@ -19,7 +19,7 @@ import inspect
 with open("config.json", "r") as js:
     open_file = json.load(js)
 
-bot = Bot(token=open_file['bot-token'])
+bot = Bot(token=open_file['vk1.a.XUtQ1-3G1sKCJjB3ojur6A41ha-NZLvwKU_msJoJyNk5kTfYQS777lcRwJ1hQSbn9J4aXccj-XXwT4_4HGcsjc5BKUeiKep3bsaVBws0RCUu9yqJhUBYddypUgAGriwjPnGNfQbmBJ8JH0dTpkP34ddD8V4vOuSbqvQr41pd_YFqFsuJCwKS6DPvgjSWSwKTjSxmfhy5ZrEcsMjRXDx7Hw'])
 
 class Console:
     @staticmethod
