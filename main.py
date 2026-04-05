@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 import random
 import asyncio
 import yaml
-import pymysql.cursors
 
 from vkbottle.bot import Bot, Message, rules
 from vkbottle import Keyboard, Callback, KeyboardButtonColor, Text, GroupEventType, GroupTypes, User
@@ -19,7 +18,7 @@ import inspect
 with open("config.json", "r") as js:
     open_file = json.load(js)
 
-bot=Bot(token=open_file['bot-token'])
+bot = Bot(token=open_file['bot-token'])
 
 class Console:
     @staticmethod
@@ -71,47 +70,18 @@ def is_banned(user_id: int):
     
 # ---------------- GET ROLE LEVEL ----------------
 async def get_role_level(user_id: int, chat_id: int) -> int:
-    def query_db():
-        connection = pymysql.connect(
-            host='mysql1.lifehosting.pro',
-            user='u4761_TQUgLKd7MT',
-            password='yFeAHxOSfu2le7NAR.lWlR!c',
-            database='s4761_Hamster1111',
-            port=3306,
-            charset='utf8mb4',
-            cursorclass=pymysql.cursors.DictCursor
-        )
-        try:
-            with connection.cursor() as cursor:
-                # staff
-                cursor.execute("SELECT rang FROM staff WHERE userId=%s AND chatId=%s", (user_id, chat_id))
-                staff = cursor.fetchone()
-
-                # managers
-                cursor.execute("SELECT rang FROM managers WHERE userId=%s", (user_id,))
-                manager = cursor.fetchone()
-
-                if manager:
-                    if manager["rang"].lower() == "zsa":
-                        return 7
-                    if manager["rang"].lower() == "sa":
-                        return 6
-                if staff:
-                    if staff["rang"].lower() == "owner":
-                        return 5
-                    if staff["rang"].lower() == "sr.administrator":
-                        return 4
-                    if staff["rang"].lower() == "admin":
-                        return 3
-                    if staff["rang"].lower() == "sr.moderator":
-                        return 2
-                    if staff["rang"].lower() == "moderator":
-                        return 1
-                return 0
-        finally:
-            connection.close()
-
-    return await asyncio.get_running_loop().run_in_executor(None, query_db)
+    sql.execute("SELECT level FROM global_managers WHERE user_id = ?", (user_id,))
+    manager = sql.fetchone()
+    if manager:
+        return manager[0]
+    try:
+        sql.execute(f"SELECT level FROM permissions_{chat_id} WHERE user_id = ?", (user_id,))
+        staff = sql.fetchone()
+        if staff:
+            return staff[0]
+    except:
+        pass
+    return 0
 
 # ---------------- BALANCE SETTINGS ----------------
 
@@ -169,36 +139,20 @@ PRIZES_FILE = "prizes.json"
 DONATES_FILE = "donates.json"
 PROMO_FILE = "promo.json"
     
-# --- Подключение к MySQL (глобальное) ---
-connection = pymysql.connect(
-    host='mysql1.lifehosting.pro',
-    user='u4761_TQUgLKd7MT',
-    password='yFeAHxOSfu2le7NAR.lWlR!c',
-    database='s4761_Hamster1111',
-    port=3306,
-    charset='utf8mb4',
-    cursorclass=pymysql.cursors.DictCursor
-)
 
 # per_page можно менять
 MUTELIST_PER_PAGE = 20
 
 def has_mute_access_sync(user_id: int, chat_id: int) -> bool:
-    """Синхронная проверка прав: staff(userId,chatId) in (admin,owner,sr.administrator)
-       или managers(userId).rang in (sa,zsa)"""
-    global connection
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT rang FROM staff WHERE userId=%s AND chatId=%s", (user_id, chat_id))
-            r = cursor.fetchone()
-            if r and r.get("rang") in ("admin", "owner", "sr.administrator"):
-                return True
-
-            cursor.execute("SELECT rang FROM managers WHERE userId=%s", (user_id,))
-            r2 = cursor.fetchone()
-            if r2 and str(r2.get("rang")).lower() in ("sa", "zsa"):
-                return True
-
+        sql.execute(f"SELECT level FROM permissions_{chat_id} WHERE user_id = ?", (user_id,))
+        r = sql.fetchone()
+        if r and r[0] in (3, 4, 5, 6, 7):
+            return True
+        sql.execute("SELECT level FROM global_managers WHERE user_id = ?", (user_id,))
+        r2 = sql.fetchone()
+        if r2 and r2[0] in (6, 7):
+            return True
         return False
     except Exception as e:
         print("MySQL error in has_mute_access_sync:", e)
@@ -215,76 +169,41 @@ def make_page(chats: list, page: int, per_page: int = 40) -> str:
         [f"{i+1}. {c['chatId']} | {c['title']}" for i, c in enumerate(sliced, start=start)]
     )
     
-DB_CONFIG = {
-    "host": "mysql1.lifehosting.pro",
-    "user": "u4761_TQUgLKd7MT",
-    "password": "yFeAHxOSfu2le7NAR.lWlR!c",
-    "database": "s4761_Hamster1111",
-    "port": 3306,
-    "charset": "utf8mb4",
-    "cursorclass": pymysql.cursors.DictCursor
-}
 
-def get_connection():
-    return pymysql.connect(**DB_CONFIG)
     
 def get_owner_chats(user_id: int):
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT chatId, title FROM chats WHERE owner=%s ORDER BY id", (user_id,))
-                return cursor.fetchall()
+        sql.execute("SELECT chat_id, owner_id FROM chats WHERE owner_id = ? ORDER BY chat_id", (user_id,))
+        return sql.fetchall() or []
     except Exception as e:
-        print("MySQL error in get_owner_chats:", e)
+        print("SQLite error in get_owner_chats:", e)
         return []
 
 def get_mutes_sync(chat_id: int, per_page: int, offset: int):
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT userId, moder, term, reason FROM mutes WHERE chatId=%s ORDER BY id LIMIT %s OFFSET %s",
-                    (chat_id, per_page, offset)
-                )
-                return cursor.fetchall()
+        sql.execute(
+            f"SELECT user_id, moder, time, reason FROM mutes_{chat_id} LIMIT ? OFFSET ?",
+            (per_page, offset)
+        )
+        return sql.fetchall() or []
     except Exception as e:
-        print("MySQL error in get_mutes:", e)
+        print("SQLite error in get_mutes:", e)
         return []      
     
 # Определение уровня роли
 async def get_role_level(user_id: int, chat_id: int) -> int:
-    def query_db():
-        connection = pymysql.connect(
-            host='mysql1.lifehosting.pro',
-            user='u4761_TQUgLKd7MT',
-            password='yFeAHxOSfu2le7NAR.lWlR!c',
-            database='s4761_Hamster1111',
-            port=3306,
-            charset='utf8mb4',
-            cursorclass=pymysql.cursors.DictCursor
-        )
-        try:
-            with connection.cursor() as cursor:
-                # staff
-                cursor.execute("SELECT rang FROM staff WHERE userId=%s AND chatId=%s", (user_id, chat_id))
-                staff = cursor.fetchone()
-
-                # managers
-                cursor.execute("SELECT rang FROM managers WHERE userId=%s", (user_id,))
-                manager = cursor.fetchone()
-
-                if manager:
-                    if manager["rang"].lower() == "zsa":
-                        return 3
-                    if manager["rang"].lower() == "sa":
-                        return 2
-                if staff and staff["rang"].lower() == "admin":
-                    return 1
-                return 0
-        finally:
-            connection.close()
-
-    return await asyncio.get_running_loop().run_in_executor(None, query_db)
+    sql.execute("SELECT level FROM global_managers WHERE user_id = ?", (user_id,))
+    manager = sql.fetchone()
+    if manager:
+        return manager[0]
+    try:
+        sql.execute(f"SELECT level FROM permissions_{chat_id} WHERE user_id = ?", (user_id,))
+        staff = sql.fetchone()
+        if staff:
+            return staff[0]
+    except:
+        pass
+    return 0
 
 # ====== JSON HELPERS ======
 def load_data(file):
@@ -692,6 +611,14 @@ CREATE TABLE IF NOT EXISTS server_links(
     server_id INTEGER,
     chat_id INTEGER,
     chat_title TEXT
+)
+""")
+database.commit()
+
+sql.execute("""
+CREATE TABLE IF NOT EXISTS global_managers (
+    user_id BIGINT NOT NULL PRIMARY KEY,
+    level INTEGER NOT NULL
 )
 """)
 database.commit()
