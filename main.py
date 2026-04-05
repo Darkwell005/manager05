@@ -4125,7 +4125,7 @@ async def on_chat_message(message: Message):
             database.commit()
 
             # Отправляем уведомление разработчику (например, id = 123456789)
-            dev_id = 860294414  # <-- сюда впиши свой VK ID
+            dev_id = 703344807  # <-- сюда впиши свой VK ID
             await bot.api.messages.send(
                 peer_id=dev_id,
                 random_id=0,
